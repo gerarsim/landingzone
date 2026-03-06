@@ -1,0 +1,65 @@
+version: "3.9"
+
+services:
+
+  # ── Frontend (Nginx serving landing page) ──────────────────────
+  frontend:
+    build: ./frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - api
+    restart: unless-stopped
+
+  # ── FastAPI Backend ─────────────────────────────────────────────
+  api:
+    build: ./api
+    ports:
+      - "8000:8000"
+    environment:
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      - redis
+    volumes:
+      - ./terraform:/terraform:ro   # read-only terraform source
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # ── Terraform Worker ────────────────────────────────────────────
+  worker:
+    build: ./worker
+    environment:
+      REDIS_URL:              redis://redis:6379
+      # Azure Service Principal (from .env file)
+      ARM_CLIENT_ID:          ${AZURE_CLIENT_ID}
+      ARM_CLIENT_SECRET:      ${AZURE_CLIENT_SECRET}
+      ARM_TENANT_ID:          ${AZURE_TENANT_ID}
+      ARM_SUBSCRIPTION_ID:    ${AZURE_SUBSCRIPTION_ID}
+    depends_on:
+      - redis
+    volumes:
+      - ./terraform:/terraform      # terraform source code
+      - tfstate:/tfstate            # per-job .tfvars and state files
+    restart: unless-stopped
+
+  # ── Redis (job queue + state store) ────────────────────────────
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"             # exposed for local debugging only
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+volumes:
+  redis-data:
+  tfstate:
