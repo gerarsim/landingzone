@@ -1,5 +1,3 @@
-version: "3.9"
-
 # ── VELOX — Docker Compose ───────────────────────────────────────────
 # ARM credentials are NOT stored here.
 # They are collected per-job via the web form and passed through Redis
