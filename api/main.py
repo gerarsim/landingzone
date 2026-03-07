@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, EmailStr
-import redis, json, uuid, os
+from pydantic import BaseModel, EmailStr, field_validator
+import redis, json, uuid, os, re
 
 app = FastAPI(title="Velox Provisioning API")
 
@@ -14,40 +14,133 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ── Request / Response models ────────────────────────────────────────
+
 class ProvisionRequest(BaseModel):
-    company:     str
-    environment: str
-    region:      str = "westeurope"
-    email:       str
+    # Landing zone parameters
+    company:        str
+    environment:    str
+    region:         str = "westeurope"
+    email:          str
+    monthly_budget: int = 1000
+
+    # Azure Service Principal – collected per-job, never stored in .env
+    arm_client_id:       str
+    arm_client_secret:   str
+    arm_tenant_id:       str
+    arm_subscription_id: str
+
+    # Optional: Terraform remote-state storage (defaults to env vars)
+    tfstate_storage_account: str = ""
+    tfstate_resource_group:  str = ""
+    tfstate_container:       str = "tfstate"
+
+    # Optional feature flags
+    enable_firewall:     bool = True
+    enable_vpn_gateway:  bool = False
+    enable_bastion:      bool = True
+
+    @field_validator("company")
+    @classmethod
+    def slugify_company(cls, v: str) -> str:
+        slug = re.sub(r"[^a-z0-9\-]", "-", v.strip().lower())
+        slug = re.sub(r"-+", "-", slug).strip("-")
+        if not slug:
+            raise ValueError("company name must contain at least one alphanumeric character")
+        return slug
+
+    @field_validator("environment")
+    @classmethod
+    def validate_env(cls, v: str) -> str:
+        v = v.strip().lower()
+        allowed = {"prod", "dev", "staging", "test", "uat"}
+        if v not in allowed:
+            raise ValueError(f"environment must be one of: {', '.join(sorted(allowed))}")
+        return v
+
+    @field_validator("arm_client_id", "arm_tenant_id", "arm_subscription_id")
+    @classmethod
+    def validate_guid(cls, v: str) -> str:
+        v = v.strip()
+        guid_re = re.compile(
+            r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+            re.IGNORECASE,
+        )
+        if not guid_re.match(v):
+            raise ValueError("must be a valid UUID / GUID")
+        return v
+
+
+class ProvisionResponse(BaseModel):
+    job_id: str
+    status: str
+
+
+# ── Endpoints ────────────────────────────────────────────────────────
 
 @app.get("/health")
 def health():
-    return {"status": "ok"}
+    try:
+        r.ping()
+        return {"status": "ok", "redis": "connected"}
+    except Exception as e:
+        return {"status": "degraded", "redis": str(e)}
 
-@app.post("/provision")
+
+@app.post("/provision", response_model=ProvisionResponse)
 def provision(req: ProvisionRequest):
     job_id = str(uuid.uuid4())
+
     payload = {
+        # Identity
         "job_id":      job_id,
         "status":      "queued",
-        "company":     req.company,
-        "environment": req.environment,
-        "region":      req.region,
-        "email":       req.email,
         "output":      "",
+        "steps":       [],
+
+        # LZ params
+        "company":          req.company,
+        "environment":      req.environment,
+        "region":           req.region,
+        "email":            req.email,
+        "monthly_budget":   req.monthly_budget,
+
+        # Feature flags
+        "enable_firewall":     req.enable_firewall,
+        "enable_vpn_gateway":  req.enable_vpn_gateway,
+        "enable_bastion":      req.enable_bastion,
+
+        # Azure SP – passed to worker, used only at runtime
+        "arm_client_id":       req.arm_client_id,
+        "arm_client_secret":   req.arm_client_secret,   # stored transiently in Redis
+        "arm_tenant_id":       req.arm_tenant_id,
+        "arm_subscription_id": req.arm_subscription_id,
+
+        # Remote state config
+        "tfstate_storage_account": req.tfstate_storage_account
+            or os.getenv("TFSTATE_STORAGE_ACCOUNT", "veloxtfstate"),
+        "tfstate_resource_group": req.tfstate_resource_group
+            or os.getenv("TFSTATE_RESOURCE_GROUP", "rg-velox-tfstate"),
+        "tfstate_container": req.tfstate_container,
     }
-    # Persist job state
-    r.set(f"job:{job_id}", json.dumps(payload))
+
+    # Persist job state (TTL 24 h – credentials auto-expire)
+    r.setex(f"job:{job_id}", 86400, json.dumps(payload))
     # Push to worker queue
     r.rpush("provision_queue", json.dumps(payload))
-    return {"job_id": job_id, "status": "queued"}
+
+    return ProvisionResponse(job_id=job_id, status="queued")
+
 
 @app.get("/status/{job_id}")
 def status(job_id: str):
     raw = r.get(f"job:{job_id}")
     if not raw:
         raise HTTPException(status_code=404, detail="Job not found")
-    return json.loads(raw)
+    job = json.loads(raw)
+    # Strip secrets before returning to client
+    return _sanitize(job)
+
 
 @app.get("/jobs")
 def list_jobs():
@@ -56,6 +149,15 @@ def list_jobs():
     for k in keys:
         raw = r.get(k)
         if raw:
-            jobs.append(json.loads(raw))
+            jobs.append(_sanitize(json.loads(raw)))
     jobs.sort(key=lambda x: x.get("job_id", ""), reverse=True)
     return jobs
+
+
+# ── Helpers ──────────────────────────────────────────────────────────
+
+_SECRET_FIELDS = {"arm_client_secret"}
+
+def _sanitize(job: dict) -> dict:
+    """Remove sensitive fields before sending to client."""
+    return {k: v for k, v in job.items() if k not in _SECRET_FIELDS}

@@ -1,8 +1,13 @@
 version: "3.9"
 
+# ── VELOX — Docker Compose ───────────────────────────────────────────
+# ARM credentials are NOT stored here.
+# They are collected per-job via the web form and passed through Redis
+# to the worker, which sets ARM_* as subprocess environment variables.
+
 services:
 
-  # ── Frontend (Nginx serving landing page) ──────────────────────
+  # ── Frontend (Nginx serving landing page) ──────────────────────────
   frontend:
     build: ./frontend
     ports:
@@ -11,7 +16,7 @@ services:
       - api
     restart: unless-stopped
 
-  # ── FastAPI Backend ─────────────────────────────────────────────
+  # ── FastAPI Backend ─────────────────────────────────────────────────
   api:
     build: ./api
     ports:
@@ -20,8 +25,6 @@ services:
       REDIS_URL: redis://redis:6379
     depends_on:
       - redis
-    volumes:
-      - ./terraform:/terraform:ro   # read-only terraform source
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
@@ -29,28 +32,31 @@ services:
       timeout: 5s
       retries: 3
 
-  # ── Terraform Worker ────────────────────────────────────────────
+  # ── Terraform Worker ─────────────────────────────────────────────────
   worker:
     build: ./worker
     environment:
-      REDIS_URL:              redis://redis:6379
-      # Azure Service Principal (from .env file)
-      ARM_CLIENT_ID:          ${AZURE_CLIENT_ID}
-      ARM_CLIENT_SECRET:      ${AZURE_CLIENT_SECRET}
-      ARM_TENANT_ID:          ${AZURE_TENANT_ID}
-      ARM_SUBSCRIPTION_ID:    ${AZURE_SUBSCRIPTION_ID}
+      REDIS_URL: redis://redis:6379
+      # Default Terraform remote state location
+      # (can be overridden per-job via the form)
+      TFSTATE_STORAGE_ACCOUNT: ${TFSTATE_STORAGE_ACCOUNT:-veloxtfstate}
+      TFSTATE_RESOURCE_GROUP:  ${TFSTATE_RESOURCE_GROUP:-rg-velox-tfstate}
+      TFSTATE_CONTAINER:       ${TFSTATE_CONTAINER:-tfstate}
+      # ARM credentials are intentionally NOT set here.
+      # Each job supplies its own credentials via the web form.
     depends_on:
       - redis
     volumes:
-      - ./terraform:/terraform      # terraform source code
-      - tfstate:/tfstate            # per-job .tfvars and state files
+      - ./terraform:/terraform:ro   # read-only source
+      - tfwork:/tfwork              # per-job working copies
+      - tfstate:/tfstate            # per-job .tfvars (auto-deleted after run)
     restart: unless-stopped
 
-  # ── Redis (job queue + state store) ────────────────────────────
+  # ── Redis (job queue + transient state store) ───────────────────────
   redis:
     image: redis:7-alpine
     ports:
-      - "6379:6379"             # exposed for local debugging only
+      - "6379:6379"
     volumes:
       - redis-data:/data
     restart: unless-stopped
@@ -59,7 +65,13 @@ services:
       interval: 10s
       timeout: 3s
       retries: 3
+    command: >
+      redis-server
+      --appendonly yes
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
 
 volumes:
   redis-data:
+  tfwork:
   tfstate:
