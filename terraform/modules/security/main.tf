@@ -2,13 +2,13 @@
 # MODULE: security
 # Deploys:
 #   - Azure Key Vault (with soft-delete, purge protection)
-#   - Microsoft Defender for Cloud (all plans)
-#   - Security Center auto-provisioning (MMA/AMA agent)
-#   - Azure Security Center contact
 #   - Diagnostic settings for Key Vault → Log Analytics
+#
+# NOTE: Defender for Cloud (azurerm_security_center_subscription_pricing)
+# and Security Center Contact are subscription-level singletons.
+# They are managed outside this module to avoid conflicts across jobs.
 # ═══════════════════════════════════════════════════════════════════
 
-# ── Key Vault ─────────────────────────────────────────────────────────
 resource "azurerm_key_vault" "main" {
   name                       = "kv-${var.company_name}-${var.environment}"
   location                   = var.location
@@ -28,14 +28,12 @@ resource "azurerm_key_vault" "main" {
   }
 }
 
-# Key Vault Crypto Officer for terraform SP
 resource "azurerm_role_assignment" "kv_admin" {
   scope                = azurerm_key_vault.main.id
   role_definition_name = "Key Vault Administrator"
   principal_id         = var.object_id
 }
 
-# ── Key Vault Diagnostic Settings → Log Analytics ─────────────────────
 resource "azurerm_monitor_diagnostic_setting" "key_vault" {
   name                       = "diag-kv-${var.environment}"
   target_resource_id         = azurerm_key_vault.main.id
@@ -50,39 +48,6 @@ resource "azurerm_monitor_diagnostic_setting" "key_vault" {
   }
 }
 
-# ── Microsoft Defender for Cloud ──────────────────────────────────────
-locals {
-  defender_plans = [
-    "VirtualMachines",
-    "SqlServers",
-    "AppServices",
-    "StorageAccounts",
-    "Containers",
-    "KeyVaults",
-    "Dns",
-    "Arm",
-  ]
-}
-
-resource "azurerm_security_center_subscription_pricing" "plans" {
-  for_each      = toset(local.defender_plans)
-  resource_type = each.value
-  tier          = var.defender_tier
-}
-
-# ── Security Center Contact ───────────────────────────────────────────
-resource "azurerm_security_center_contact" "main" {
-  email               = var.security_contact_email
-  alert_notifications = true
-  alerts_to_admins    = true
-}
-
-# ── Auto-provisioning: Azure Monitor Agent ────────────────────────────
-resource "azurerm_security_center_auto_provisioning" "ama" {
-  auto_provision = "On"
-}
-
-# ── Key Vault: Landing Zone shared secrets placeholder ────────────────
 resource "azurerm_key_vault_secret" "lz_metadata" {
   name         = "lz-metadata"
   value        = jsonencode({

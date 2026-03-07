@@ -1,7 +1,3 @@
-# ═══════════════════════════════════════════════════════════════════
-# MODULE: policies
-# ═══════════════════════════════════════════════════════════════════
-
 resource "azurerm_policy_set_definition" "landing_zone_baseline" {
   name         = "lz-baseline-${var.environment}"
   policy_type  = "Custom"
@@ -13,17 +9,13 @@ resource "azurerm_policy_set_definition" "landing_zone_baseline" {
   policy_definition_reference {
     policy_definition_id = "/providers/Microsoft.Authorization/policyDefinitions/96670d01-0a4d-4649-9c89-2d3abc0a5025"
     reference_id         = "require-environment-tag"
-    parameter_values = jsonencode({
-      tagName = { value = "environment" }
-    })
+    parameter_values     = jsonencode({ tagName = { value = "environment" } })
   }
 
   policy_definition_reference {
     policy_definition_id = "/providers/Microsoft.Authorization/policyDefinitions/96670d01-0a4d-4649-9c89-2d3abc0a5025"
     reference_id         = "require-managed-by-tag"
-    parameter_values = jsonencode({
-      tagName = { value = "managed_by" }
-    })
+    parameter_values     = jsonencode({ tagName = { value = "managed_by" } })
   }
 
   policy_definition_reference {
@@ -59,21 +51,9 @@ resource "azurerm_management_group_policy_assignment" "allowed_locations" {
   display_name         = "Allowed Azure Locations"
   policy_definition_id = "/providers/Microsoft.Authorization/policyDefinitions/e56962a6-4747-49cd-b67b-bf8b01975c4c"
   management_group_id  = var.management_group_id
-
   parameters = jsonencode({
-    listOfAllowedLocations = {
-      value = var.allowed_locations
-    }
+    listOfAllowedLocations = { value = var.allowed_locations }
   })
-}
-
-# Audit public IPs instead of deny (avoid breaking existing resources)
-resource "azurerm_management_group_policy_assignment" "audit_public_ip" {
-  name                 = "audit-public-ip"
-  display_name         = "Audit Public IP addresses"
-  policy_definition_id = "/providers/Microsoft.Authorization/policyDefinitions/83a86a26-fd1f-447c-b59d-ddc1adab4b3d"
-  management_group_id  = var.management_group_id
-  enforce              = false
 }
 
 resource "azurerm_management_group_policy_assignment" "storage_https" {
@@ -82,17 +62,4 @@ resource "azurerm_management_group_policy_assignment" "storage_https" {
   policy_definition_id = "/providers/Microsoft.Authorization/policyDefinitions/404c3081-a854-4457-ae30-26a93ef643f9"
   management_group_id  = var.management_group_id
   enforce              = true
-}
-
-resource "azurerm_management_group_policy_assignment" "mcsb" {
-  name                 = "mcsb"
-  display_name         = "Microsoft Cloud Security Benchmark"
-  policy_definition_id = "/providers/Microsoft.Authorization/policySetDefinitions/1f3afdf9-d0c9-4c3d-847f-89da613e70a8"
-  management_group_id  = var.management_group_id
-
-  identity {
-    type = "SystemAssigned"
-  }
-
-  location = var.location
 }

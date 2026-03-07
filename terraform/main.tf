@@ -16,8 +16,8 @@ terraform {
 }
 
 provider "azurerm" {
-  features {}
   skip_provider_registration = true
+  features {}
 }
 
 provider "azuread" {}
@@ -32,11 +32,10 @@ locals {
   }
 }
 
-module "management_groups" {
-  source       = "./modules/management-groups"
-  company_name = var.company_name
-  environment  = var.environment
-}
+# Management groups and policies require elevated MG permissions
+# Enable once SP has Owner on root Management Group
+# module "management_groups" { ... }
+# module "policies" { ... }
 
 module "networking" {
   source               = "./modules/networking"
@@ -85,15 +84,6 @@ module "identity" {
   environment     = var.environment
   subscription_id = data.azurerm_client_config.current.subscription_id
   tenant_id       = data.azurerm_client_config.current.tenant_id
-}
-
-module "policies" {
-  source              = "./modules/policies"
-  management_group_id = module.management_groups.company_mg_id
-  environment         = var.environment
-  location            = var.location
-  allowed_locations   = var.allowed_locations
-  depends_on          = [module.management_groups]
 }
 
 module "budget" {
