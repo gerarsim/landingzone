@@ -9,11 +9,14 @@ r = redis.from_url(os.getenv("REDIS_URL", "redis://redis:6379"), decode_response
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://devopserver.ddns.net",
+        "http://localhost",
+        "http://localhost:8000",
+    ],
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
 # ── Request / Response models ────────────────────────────────────────
 
 class ProvisionRequest(BaseModel):
