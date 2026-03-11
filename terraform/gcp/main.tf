@@ -1,6 +1,6 @@
 # ═══════════════════════════════════════════════════════════════════
-# LZForge — GCP Landing Zone
-# Provisions: VPC, Cloud NAT, IAM, Cloud Armor, Audit Logs, Budgets
+# LZForge — GCP Landing Zone Root
+# Orchestrates: networking, security, identity, monitoring, budget
 # ═══════════════════════════════════════════════════════════════════
 
 terraform {
@@ -21,7 +21,10 @@ provider "google" {
   region  = var.region
 }
 
+data "google_project" "current" {}
+
 locals {
+  name_prefix = "${var.company_name}-${var.environment}"
   labels = {
     environment = var.environment
     company     = var.company_name
@@ -29,95 +32,68 @@ locals {
   }
 }
 
-# ── VPC ──────────────────────────────────────────────────────────────
-resource "google_compute_network" "hub" {
-  name                    = "vpc-${var.company_name}-hub-${var.environment}"
-  auto_create_subnetworks = false
+# ── Enable core APIs ──────────────────────────────────────────────────
+resource "google_project_service" "core_apis" {
+  for_each = toset([
+    "compute.googleapis.com",
+    "iam.googleapis.com",
+    "cloudresourcemanager.googleapis.com",
+    "billingbudgets.googleapis.com",
+    "pubsub.googleapis.com",
+    "storage.googleapis.com",
+    "secretmanager.googleapis.com",
+    "cloudkms.googleapis.com",
+    "monitoring.googleapis.com",
+    "logging.googleapis.com",
+  ])
+  service            = each.value
+  disable_on_destroy = false
 }
 
-resource "google_compute_subnetwork" "hub" {
-  name                     = "snet-hub-${var.environment}"
-  ip_cidr_range            = var.subnet_cidr
-  region                   = var.region
-  network                  = google_compute_network.hub.id
-  private_ip_google_access = true
+# ── Networking ────────────────────────────────────────────────────────
+module "networking" {
+  source           = "./modules/networking"
+  name_prefix      = local.name_prefix
+  region           = var.region
+  subnet_cidr      = var.subnet_cidr
+  enable_cloud_nat = var.enable_cloud_nat
+  depends_on       = [google_project_service.core_apis]
 }
 
-# ── Firewall: deny all ingress, allow internal ────────────────────────
-resource "google_compute_firewall" "deny_ingress" {
-  name      = "fw-deny-ingress-${var.environment}"
-  network   = google_compute_network.hub.id
-  direction = "INGRESS"
-  priority  = 65534
-  deny { protocol = "all" }
-  source_ranges = []
+# ── Security (KMS, Secret Manager, Cloud Armor, audit logs) ──────────
+module "security" {
+  source              = "./modules/security"
+  name_prefix         = local.name_prefix
+  region              = var.region
+  enable_cloud_armor  = var.enable_cloud_armor
+  enable_scc          = var.enable_scc
+  depends_on          = [google_project_service.core_apis]
 }
 
-resource "google_compute_firewall" "allow_internal" {
-  name      = "fw-allow-internal-${var.environment}"
-  network   = google_compute_network.hub.id
-  direction = "INGRESS"
-  priority  = 1000
-  allow { protocol = "all" }
-  source_ranges = [var.subnet_cidr]
+# ── Identity (service accounts, IAM, org policies) ────────────────────
+module "identity" {
+  source      = "./modules/identity"
+  name_prefix = local.name_prefix
+  org_id      = var.org_id
+  depends_on  = [google_project_service.core_apis]
 }
 
-# ── Cloud NAT ────────────────────────────────────────────────────────
-resource "google_compute_router" "hub" {
-  count   = var.enable_cloud_nat ? 1 : 0
-  name    = "router-${var.company_name}-${var.environment}"
-  region  = var.region
-  network = google_compute_network.hub.id
+# ── Monitoring (log sink, alerting policies, metrics) ─────────────────
+module "monitoring" {
+  source      = "./modules/monitoring"
+  name_prefix = local.name_prefix
+  region      = var.region
+  alert_email = var.alert_email
+  depends_on  = [google_project_service.core_apis]
 }
 
-resource "google_compute_router_nat" "hub" {
-  count                              = var.enable_cloud_nat ? 1 : 0
-  name                               = "nat-${var.company_name}-${var.environment}"
-  router                             = google_compute_router.hub[0].name
-  region                             = var.region
-  nat_ip_allocate_option             = "AUTO_ONLY"
-  source_subnetwork_ip_ranges_to_nat = "ALL_SUBNETWORKS_ALL_IP_RANGES"
-}
-
-# ── Cloud Armor WAF ───────────────────────────────────────────────────
-resource "google_compute_security_policy" "waf" {
-  count = var.enable_cloud_armor ? 1 : 0
-  name  = "waf-${var.company_name}-${var.environment}"
-
-  rule {
-    action   = "allow"
-    priority = 2147483647
-    match {
-      versioned_expr = "SRC_IPS_V1"
-      config { src_ip_ranges = ["*"] }
-    }
-    description = "Default allow rule"
-  }
-}
-
-# ── Budget Alert ──────────────────────────────────────────────────────
-resource "google_pubsub_topic" "budget_alerts" {
-  count = var.billing_account_id != "" ? 1 : 0
-  name  = "budget-alerts-${var.company_name}-${var.environment}"
-}
-
-resource "google_billing_budget" "main" {
-  count           = var.billing_account_id != "" ? 1 : 0
-  billing_account = var.billing_account_id
-  display_name    = "budget-${var.company_name}-${var.environment}"
-
-  amount {
-    specified_amount {
-      currency_code = "USD"
-      units         = tostring(var.monthly_budget)
-    }
-  }
-
-  threshold_rules {
-    threshold_percent = 0.9
-  }
-
-  all_updates_rule {
-    pubsub_topic = google_pubsub_topic.budget_alerts[0].id
-  }
+# ── Budget ────────────────────────────────────────────────────────────
+module "budget" {
+  source                   = "./modules/budget"
+  name_prefix              = local.name_prefix
+  monthly_budget           = var.monthly_budget
+  billing_account_id       = var.billing_account_id
+  project_number           = data.google_project.current.number
+  notification_channel_ids = [module.monitoring.notification_channel_id]
+  depends_on               = [module.monitoring]
 }

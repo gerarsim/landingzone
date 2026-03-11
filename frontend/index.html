@@ -527,6 +527,14 @@
               <label for="f-aws-bucket">TF State S3 Bucket <span style="color:var(--muted)">(optional)</span></label>
               <input id="f-aws-bucket" name="tfstate_storage_account" placeholder="my-tfstate-bucket" />
             </div>
+            <div class="field-wrap">
+              <label for="f-aws-vpc-cidr">VPC CIDR <span style="color:var(--muted)">(optional)</span></label>
+              <input id="f-aws-vpc-cidr" name="vpc_cidr" placeholder="10.0.0.0/16" value="10.0.0.0/16" />
+            </div>
+            <div class="field-wrap">
+              <label for="f-aws-log-retention">Log Retention (days) <span style="color:var(--muted)">(optional)</span></label>
+              <input id="f-aws-log-retention" name="log_retention_days" type="number" min="1" max="3650" placeholder="90" value="90" />
+            </div>
           </div>
         </div>
 
@@ -557,6 +565,14 @@
             <div class="field-wrap span-2">
               <label for="f-gcp-bucket">TF State GCS Bucket <span style="color:var(--muted)">(optional)</span></label>
               <input id="f-gcp-bucket" name="tfstate_storage_account" placeholder="my-tfstate-bucket" />
+            </div>
+            <div class="field-wrap">
+              <label for="f-gcp-subnet-cidr">Subnet CIDR <span style="color:var(--muted)">(optional)</span></label>
+              <input id="f-gcp-subnet-cidr" name="subnet_cidr" placeholder="10.0.0.0/24" value="10.0.0.0/24" />
+            </div>
+            <div class="field-wrap">
+              <label for="f-gcp-org-id">Organization ID <span style="color:var(--muted)">(optional — enables org policies)</span></label>
+              <input id="f-gcp-org-id" name="gcp_org_id" placeholder="123456789012" />
             </div>
           </div>
         </div>
@@ -1096,6 +1112,7 @@ document.getElementById('landingForm').addEventListener('submit',async e=>{
 
   // Cast typed fields
   data.monthly_budget      = parseInt(data.monthly_budget)||1000;
+  data.log_retention_days  = parseInt(data.log_retention_days)||90;
   data.enable_firewall     = data.enable_firewall==='true';
   data.enable_vpn_gateway  = data.enable_vpn_gateway==='true';
   data.enable_bastion      = data.enable_bastion==='true';

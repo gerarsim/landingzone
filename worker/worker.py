@@ -203,14 +203,16 @@ def run_terraform_azure(job, job_tf_dir):
 
 # ── AWS runner ───────────────────────────────────────────────────────
 def run_terraform_aws(job, job_tf_dir):
-    job_id  = job["job_id"]
-    company = job["company"]
-    env     = job["environment"]
-    region  = job.get("region", "us-east-1")
-    email   = job.get("email", "ops@example.com")
-    budget  = job.get("monthly_budget", 1000)
-    bucket  = job.get("tfstate_storage_account", os.getenv("TFSTATE_STORAGE_ACCOUNT", ""))
-    state_key = f"{company}-{env}.tfstate"
+    job_id             = job["job_id"]
+    company            = job["company"]
+    env                = job["environment"]
+    region             = job.get("region", "us-east-1")
+    email              = job.get("email", "ops@example.com")
+    budget             = job.get("monthly_budget", 1000)
+    vpc_cidr           = job.get("vpc_cidr", "10.0.0.0/16")
+    log_retention_days = job.get("log_retention_days", 90)
+    bucket             = job.get("tfstate_storage_account", os.getenv("TFSTATE_STORAGE_ACCOUNT", ""))
+    state_key          = f"{company}-{env}.tfstate"
 
     enable_guardduty    = str(job.get("enable_guardduty",    True)).lower()
     enable_cloudtrail   = str(job.get("enable_cloudtrail",   True)).lower()
@@ -227,6 +229,8 @@ def run_terraform_aws(job, job_tf_dir):
         f.write(f'company_name        = "{company}"\n')
         f.write(f'environment         = "{env}"\n')
         f.write(f'region              = "{region}"\n')
+        f.write(f'vpc_cidr            = "{vpc_cidr}"\n')
+        f.write(f'log_retention_days  = {log_retention_days}\n')
         f.write(f'alert_email         = "{email}"\n')
         f.write(f'monthly_budget      = {budget}\n')
         f.write(f'enable_guardduty    = {enable_guardduty}\n')
@@ -281,11 +285,13 @@ def run_terraform_gcp(job, job_tf_dir):
     budget             = job.get("monthly_budget", 1000)
     project_id         = job.get("gcp_project_id", "")
     billing_account_id = job.get("gcp_billing_account_id", "")
+    subnet_cidr        = job.get("subnet_cidr", "10.0.0.0/24")
+    org_id             = job.get("gcp_org_id", "")
     bucket             = job.get("tfstate_storage_account", os.getenv("TFSTATE_STORAGE_ACCOUNT", ""))
     state_prefix       = f"{company}-{env}"
 
-    enable_cloud_nat  = str(job.get("enable_cloud_nat",  True)).lower()
-    enable_scc        = str(job.get("enable_scc",        False)).lower()
+    enable_cloud_nat   = str(job.get("enable_cloud_nat",   True)).lower()
+    enable_scc         = str(job.get("enable_scc",         False)).lower()
     enable_cloud_armor = str(job.get("enable_cloud_armor", False)).lower()
 
     cred_env = {
@@ -299,6 +305,8 @@ def run_terraform_gcp(job, job_tf_dir):
         f.write(f'environment         = "{env}"\n')
         f.write(f'project_id          = "{project_id}"\n')
         f.write(f'region              = "{region}"\n')
+        f.write(f'subnet_cidr         = "{subnet_cidr}"\n')
+        f.write(f'org_id              = "{org_id}"\n')
         f.write(f'alert_email         = "{email}"\n')
         f.write(f'monthly_budget      = {budget}\n')
         f.write(f'billing_account_id  = "{billing_account_id}"\n')

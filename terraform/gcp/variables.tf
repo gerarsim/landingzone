@@ -1,6 +1,6 @@
 # ═══════════════════════════════════════════════════════════════════
 # LZForge — GCP Root Variables
-# All values are written per-job into a .tfvars file by the worker.
+# All values written per-job by the worker into a .tfvars file.
 # GCP credentials are passed as GOOGLE_* environment variables — never
 # written into tfvars files to avoid secrets in state files.
 # ═══════════════════════════════════════════════════════════════════
@@ -32,19 +32,25 @@ variable "project_id" {
 
 variable "region" {
   type        = string
-  description = "Primary GCP region for all resources."
+  description = "Primary GCP region."
   default     = "europe-west1"
 }
 
 variable "subnet_cidr" {
   type        = string
-  description = "CIDR block for the hub subnet."
+  description = "Primary CIDR for the hub subnet."
   default     = "10.0.0.0/24"
+}
+
+variable "org_id" {
+  type        = string
+  description = "GCP Organization ID. Required to apply org-level policy constraints. Leave empty to skip."
+  default     = ""
 }
 
 variable "monthly_budget" {
   type        = number
-  description = "Monthly spend limit in USD. Alert fires at 90% threshold."
+  description = "Monthly spend limit in USD. Alerts fire at 50/75/90/100/110%."
   default     = 1000
 
   validation {
@@ -55,13 +61,13 @@ variable "monthly_budget" {
 
 variable "alert_email" {
   type        = string
-  description = "Email address for budget alerts."
+  description = "Email address for budget alerts and Cloud Monitoring notifications."
   default     = "ops@example.com"
 }
 
 variable "billing_account_id" {
   type        = string
-  description = "GCP Billing Account ID (format: XXXXXX-XXXXXX-XXXXXX) for budget resources."
+  description = "GCP Billing Account ID (format: XXXXXX-XXXXXX-XXXXXX). Required for budget creation."
   default     = ""
 }
 
@@ -79,6 +85,6 @@ variable "enable_scc" {
 
 variable "enable_cloud_armor" {
   type        = bool
-  description = "Enable Cloud Armor WAF policy."
+  description = "Deploy Cloud Armor WAF security policy."
   default     = false
 }

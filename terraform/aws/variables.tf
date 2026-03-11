@@ -1,6 +1,6 @@
 # ═══════════════════════════════════════════════════════════════════
 # LZForge — AWS Root Variables
-# All values are written per-job into a .tfvars file by the worker.
+# All values written per-job by the worker into a .tfvars file.
 # AWS credentials are passed as AWS_* environment variables — never
 # written into tfvars files to avoid secrets in state files.
 # ═══════════════════════════════════════════════════════════════════
@@ -33,13 +33,19 @@ variable "region" {
 
 variable "vpc_cidr" {
   type        = string
-  description = "CIDR block for the hub VPC."
+  description = "CIDR block for the VPC."
   default     = "10.0.0.0/16"
+}
+
+variable "log_retention_days" {
+  type        = number
+  description = "CloudWatch log retention in days."
+  default     = 90
 }
 
 variable "monthly_budget" {
   type        = number
-  description = "Monthly spend limit in USD. Alert fires at 90% threshold."
+  description = "Monthly spend limit in USD. Alerts fire at 50/75/90/100/110%."
   default     = 1000
 
   validation {
@@ -50,24 +56,24 @@ variable "monthly_budget" {
 
 variable "alert_email" {
   type        = string
-  description = "Email address for budget alerts and security findings."
+  description = "Email address for budget alerts, security findings, and CloudWatch alarms."
   default     = "ops@example.com"
 }
 
 variable "enable_guardduty" {
   type        = bool
-  description = "Enable AWS GuardDuty for threat detection."
+  description = "Enable AWS GuardDuty threat detection."
   default     = true
 }
 
 variable "enable_cloudtrail" {
   type        = bool
-  description = "Enable AWS CloudTrail for audit logging."
+  description = "Enable AWS CloudTrail multi-region audit logging."
   default     = true
 }
 
 variable "enable_security_hub" {
   type        = bool
-  description = "Enable AWS Security Hub for centralised security findings."
+  description = "Enable AWS Security Hub with CIS benchmark and AWS Foundational standards."
   default     = false
 }

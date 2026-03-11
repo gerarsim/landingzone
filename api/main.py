@@ -1,8 +1,7 @@
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from cryptography.fernet import Fernet
-from pydantic import BaseModel, EmailStr, field_validator, model_validator
-import redis, json, uuid, os, re, logging, base64
+from pydantic import BaseModel, field_validator, model_validator
+import redis, json, uuid, os, re, logging, time
 
 logging.basicConfig(
     level=logging.INFO,
@@ -12,12 +11,11 @@ logging.basicConfig(
 log = logging.getLogger(__name__)
 
 app = FastAPI(title="LZForge Provisioning API")
-app = FastAPI(title="LZForge Provisioning API")
 
 r = redis.from_url(os.getenv("REDIS_URL", "redis://redis:6379"), decode_responses=True)
 
 # ── Encryption — key auto-managed in Redis, no manual config needed ───
-def _get_fernet() -> "Fernet":
+def _get_fernet():
     from cryptography.fernet import Fernet
     for attempt in range(10):
         try:
@@ -63,6 +61,8 @@ async def log_requests(request: Request, call_next):
     response = await call_next(request)
     log.info("%s %s %s", request.method, request.url.path, response.status_code)
     return response
+
+
 # ── Request / Response models ────────────────────────────────────────
 
 class ProvisionRequest(BaseModel):
@@ -99,6 +99,14 @@ class ProvisionRequest(BaseModel):
     tfstate_storage_account: str = ""
     tfstate_resource_group:  str = ""
     tfstate_container:       str = "tfstate"
+
+    # ── Optional networking overrides ─────────────────────────────────
+    # AWS
+    vpc_cidr:           str = "10.0.0.0/16"   # VPC CIDR block
+    log_retention_days: int = 90               # CloudWatch log retention (days)
+    # GCP
+    subnet_cidr: str = "10.0.0.0/24"          # Hub subnet CIDR
+    gcp_org_id:  str = ""                      # GCP Org ID (enables org-level policies)
 
     # ── Optional feature flags ────────────────────────────────────────
     # Azure
@@ -217,12 +225,16 @@ def provision(req: ProvisionRequest):
         "enable_vpn_gateway":  req.enable_vpn_gateway,
         "enable_bastion":      req.enable_bastion,
 
-        # AWS feature flags
+        # AWS networking + feature flags
+        "vpc_cidr":            req.vpc_cidr,
+        "log_retention_days":  req.log_retention_days,
         "enable_guardduty":    req.enable_guardduty,
         "enable_cloudtrail":   req.enable_cloudtrail,
         "enable_security_hub": req.enable_security_hub,
 
-        # GCP feature flags
+        # GCP networking + feature flags
+        "subnet_cidr":        req.subnet_cidr,
+        "gcp_org_id":         req.gcp_org_id,
         "enable_cloud_nat":   req.enable_cloud_nat,
         "enable_scc":         req.enable_scc,
         "enable_cloud_armor": req.enable_cloud_armor,
@@ -246,9 +258,7 @@ def provision(req: ProvisionRequest):
         # Remote state
         "tfstate_storage_account": req.tfstate_storage_account
             or os.getenv("TFSTATE_STORAGE_ACCOUNT", "lzforgetfstate"),
-            or os.getenv("TFSTATE_STORAGE_ACCOUNT", "lzforgetfstate"),
         "tfstate_resource_group": req.tfstate_resource_group
-            or os.getenv("TFSTATE_RESOURCE_GROUP", "rg-lzforge-tfstate"),
             or os.getenv("TFSTATE_RESOURCE_GROUP", "rg-lzforge-tfstate"),
         "tfstate_container": req.tfstate_container,
     }
@@ -267,7 +277,6 @@ def status(job_id: str):
     if not raw:
         raise HTTPException(status_code=404, detail="Job not found")
     job = decrypt_payload(raw)
-    # Strip secrets before returning to client
     return _sanitize(job)
 
 
