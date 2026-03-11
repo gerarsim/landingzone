@@ -1,4 +1,5 @@
 import redis, json, subprocess, os, time, pathlib, logging, sys, shutil
+from cryptography.fernet import Fernet
 
 logging.basicConfig(
     stream=sys.stdout, level=logging.INFO,
@@ -10,17 +11,32 @@ log = logging.getLogger(__name__)
 REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379")
 r = redis.from_url(REDIS_URL, decode_responses=True)
 
+# ── Encryption (must match key used in API) ───────────────────────────
+_raw_key = os.getenv("REDIS_ENCRYPT_KEY", "")
+if not _raw_key:
+    log.error("REDIS_ENCRYPT_KEY not set — worker cannot decrypt jobs")
+    sys.exit(1)
+_fernet = Fernet(_raw_key.encode())
+
+
+def encrypt_payload(data: dict) -> str:
+    return _fernet.encrypt(json.dumps(data).encode()).decode()
+
+
+def decrypt_payload(token: str) -> dict:
+    return json.loads(_fernet.decrypt(token.encode()))
+
 
 def update_job(job_id, status, output="", step=""):
     raw = r.get(f"job:{job_id}")
     if not raw:
         return
-    job = json.loads(raw)
+    job = decrypt_payload(raw)
     job["status"] = status
     job["output"] = output
     if step:
         job["step"] = step
-    r.set(f"job:{job_id}", json.dumps(job))
+    r.set(f"job:{job_id}", encrypt_payload(job))
     log.info(f"[{job_id[:8]}] {status}" + (f" — {step}" if step else ""))
 
 
@@ -192,18 +208,25 @@ def run_terraform(job):
 log.info("✅ Velox Worker started — waiting for jobs...")
 pathlib.Path("/tfwork/.plugin-cache").mkdir(parents=True, exist_ok=True)
 
+_backoff = 2  # seconds, doubles on repeated failures up to _backoff_max
+_backoff_max = 60
+
 while True:
     try:
         item = r.blpop("provision_queue", timeout=5)
         if not item:
+            _backoff = 2  # reset on successful poll
             continue
         _, payload = item
-        job = json.loads(payload)
+        job = decrypt_payload(payload)
         log.info(f"📦 New job: {job['job_id'][:8]} | {job['company']} | {job['environment']}")
         run_terraform(job)
+        _backoff = 2  # reset after successful job
     except redis.exceptions.ConnectionError:
         log.warning("Redis disconnected, retrying in 3s...")
         time.sleep(3)
     except Exception as e:
         log.error(f"Worker error: {e}")
-        time.sleep(2)
+        log.info(f"Retrying in {_backoff}s...")
+        time.sleep(_backoff)
+        _backoff = min(_backoff * 2, _backoff_max)
