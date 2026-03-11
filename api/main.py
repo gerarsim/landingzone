@@ -1,22 +1,56 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from cryptography.fernet import Fernet
 from pydantic import BaseModel, EmailStr, field_validator
-import redis, json, uuid, os, re
+import redis, json, uuid, os, re, logging, base64
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    datefmt="%Y-%m-%dT%H:%M:%S",
+)
+log = logging.getLogger(__name__)
 
 app = FastAPI(title="Velox Provisioning API")
 
 r = redis.from_url(os.getenv("REDIS_URL", "redis://redis:6379"), decode_responses=True)
 
+# ── Encryption (Fernet symmetric) ────────────────────────────────────
+_raw_key = os.getenv("REDIS_ENCRYPT_KEY", "")
+if _raw_key:
+    _fernet = Fernet(_raw_key.encode())
+else:
+    # Generate ephemeral key at startup (jobs survive only while container runs)
+    log.warning("REDIS_ENCRYPT_KEY not set — using ephemeral key; set it for persistence")
+    _fernet = Fernet(Fernet.generate_key())
+
+
+def encrypt_payload(data: dict) -> str:
+    return _fernet.encrypt(json.dumps(data).encode()).decode()
+
+
+def decrypt_payload(token: str) -> dict:
+    return json.loads(_fernet.decrypt(token.encode()))
+
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
+        "https://devopserver.ddns.net",
         "http://devopserver.ddns.net",
         "http://localhost",
         "http://localhost:8000",
     ],
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type"],
 )
+
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    response = await call_next(request)
+    log.info("%s %s %s", request.method, request.url.path, response.status_code)
+    return response
 # ── Request / Response models ────────────────────────────────────────
 
 class ProvisionRequest(BaseModel):
@@ -127,10 +161,10 @@ def provision(req: ProvisionRequest):
         "tfstate_container": req.tfstate_container,
     }
 
-    # Persist job state (TTL 24 h – credentials auto-expire)
-    r.setex(f"job:{job_id}", 86400, json.dumps(payload))
-    # Push to worker queue
-    r.rpush("provision_queue", json.dumps(payload))
+    # Persist job state (TTL 24 h – credentials auto-expire, encrypted at rest)
+    r.setex(f"job:{job_id}", 86400, encrypt_payload(payload))
+    # Push to worker queue (encrypted)
+    r.rpush("provision_queue", encrypt_payload(payload))
 
     return ProvisionResponse(job_id=job_id, status="queued")
 
@@ -140,7 +174,7 @@ def status(job_id: str):
     raw = r.get(f"job:{job_id}")
     if not raw:
         raise HTTPException(status_code=404, detail="Job not found")
-    job = json.loads(raw)
+    job = decrypt_payload(raw)
     # Strip secrets before returning to client
     return _sanitize(job)
 
@@ -152,7 +186,7 @@ def list_jobs():
     for k in keys:
         raw = r.get(k)
         if raw:
-            jobs.append(_sanitize(json.loads(raw)))
+            jobs.append(_sanitize(decrypt_payload(raw)))
     jobs.sort(key=lambda x: x.get("job_id", ""), reverse=True)
     return jobs
 

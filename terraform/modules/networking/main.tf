@@ -148,7 +148,7 @@ resource "azurerm_firewall" "hub" {
   }
 }
 
-# Firewall: allow all outbound (tighten for prod)
+# Firewall: allow specific outbound traffic only
 resource "azurerm_firewall_network_rule_collection" "allow_outbound" {
   count               = var.enable_firewall ? 1 : 0
   name                = "allow-outbound"
@@ -158,7 +158,41 @@ resource "azurerm_firewall_network_rule_collection" "allow_outbound" {
   action              = "Allow"
 
   rule {
-    name                  = "allow-all-outbound"
+    name                  = "allow-https-outbound"
+    source_addresses      = ["10.0.0.0/8"]
+    destination_addresses = ["*"]
+    destination_ports     = ["443"]
+    protocols             = ["TCP"]
+  }
+
+  rule {
+    name                  = "allow-dns-outbound"
+    source_addresses      = ["10.0.0.0/8"]
+    destination_addresses = ["*"]
+    destination_ports     = ["53"]
+    protocols             = ["TCP", "UDP"]
+  }
+
+  rule {
+    name                  = "allow-ntp-outbound"
+    source_addresses      = ["10.0.0.0/8"]
+    destination_addresses = ["*"]
+    destination_ports     = ["123"]
+    protocols             = ["UDP"]
+  }
+}
+
+# Firewall: deny all other outbound (explicit deny after allow rules)
+resource "azurerm_firewall_network_rule_collection" "deny_outbound" {
+  count               = var.enable_firewall ? 1 : 0
+  name                = "deny-outbound-default"
+  azure_firewall_name = azurerm_firewall.hub[0].name
+  resource_group_name = azurerm_resource_group.networking.name
+  priority            = 4096
+  action              = "Deny"
+
+  rule {
+    name                  = "deny-all-outbound"
     source_addresses      = ["10.0.0.0/8"]
     destination_addresses = ["*"]
     destination_ports     = ["*"]
@@ -208,7 +242,8 @@ resource "azurerm_public_ip" "vpn_gateway" {
   name                = "pip-vpngw-${var.environment}"
   location            = var.location
   resource_group_name = azurerm_resource_group.networking.name
-  allocation_method   = "Dynamic"
+  allocation_method   = "Static"
+  sku                 = "Standard"
   tags                = var.tags
 }
 
