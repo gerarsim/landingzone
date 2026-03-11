@@ -1,7 +1,7 @@
-# ── VELOX — Docker Compose ───────────────────────────────────────────
-# ARM credentials are NOT stored here.
+# ── LZForge — Docker Compose ─────────────────────────────────────────
+# Cloud credentials are NOT stored here.
 # They are collected per-job via the web form and passed through Redis
-# to the worker, which sets ARM_* as subprocess environment variables.
+# to the worker, which sets provider-specific env vars at runtime.
 
 services:
 
@@ -42,8 +42,8 @@ services:
       REDIS_ENCRYPT_KEY: ${REDIS_ENCRYPT_KEY}
       # Default Terraform remote state location
       # (can be overridden per-job via the form)
-      TFSTATE_STORAGE_ACCOUNT: ${TFSTATE_STORAGE_ACCOUNT:-veloxtfstate}
-      TFSTATE_RESOURCE_GROUP:  ${TFSTATE_RESOURCE_GROUP:-rg-velox-tfstate}
+      TFSTATE_STORAGE_ACCOUNT: ${TFSTATE_STORAGE_ACCOUNT:-lzforgetfstate}
+      TFSTATE_RESOURCE_GROUP:  ${TFSTATE_RESOURCE_GROUP:-rg-lzforge-tfstate}
       TFSTATE_CONTAINER:       ${TFSTATE_CONTAINER:-tfstate}
       # ARM credentials are intentionally NOT set here.
       # Each job supplies its own credentials via the web form.

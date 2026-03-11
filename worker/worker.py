@@ -45,31 +45,24 @@ def run(cmd, cwd, extra_env=None):
     return subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, env=env)
 
 
-def try_import(job_tf_dir, var_file, resource_addr, resource_id, arm_env):
+def try_import(job_tf_dir, var_file, resource_addr, resource_id, cred_env):
     res = run(
         ["terraform", "import",
          "-lock=false", f"-var-file={var_file}",
          "-input=false", "-no-color",
          resource_addr, resource_id],
-        cwd=job_tf_dir, extra_env=arm_env,
+        cwd=job_tf_dir, extra_env=cred_env,
     )
     if res.returncode == 0:
         log.info(f"  ✓ Imported: {resource_addr}")
         return
 
-    # Collapse newlines so substring matching works reliably
     err = (res.stderr + res.stdout).lower().replace("\n", " ").replace("\r", " ")
 
     not_found_signals = [
-        "no object exists",
-        "not found",
-        "could not be found",
-        "resourcenotfound",
-        "404",
-        "does not exist",
-        "no match",
-        "cannot be found",
-        "was not found",
+        "no object exists", "not found", "could not be found",
+        "resourcenotfound", "404", "does not exist",
+        "no match", "cannot be found", "was not found",
     ]
     already_managed_signals = [
         "already managed by terraform",
@@ -84,34 +77,30 @@ def try_import(job_tf_dir, var_file, resource_addr, resource_id, arm_env):
         log.warning(f"  ✗ Import skipped for {resource_addr}: {res.stderr[-300:]}")
 
 
-def run_terraform(job):
+# ── Azure runner ─────────────────────────────────────────────────────
+def run_terraform_azure(job, job_tf_dir):
     job_id  = job["job_id"]
-    company = job["company"].lower().replace(" ", "-")
-    env     = job["environment"].lower()
+    company = job["company"]
+    env     = job["environment"]
     region  = job.get("region", "westeurope")
     email   = job.get("email", "ops@example.com")
     budget  = job.get("monthly_budget", 1000)
-    sub_id  = job.get("arm_subscription_id", os.getenv("ARM_SUBSCRIPTION_ID", ""))
+    sub_id  = job.get("arm_subscription_id", "")
 
-    enable_firewall    = str(job.get("enable_firewall", False)).lower()
+    enable_firewall    = str(job.get("enable_firewall",    False)).lower()
     enable_vpn_gateway = str(job.get("enable_vpn_gateway", False)).lower()
-    enable_bastion     = str(job.get("enable_bastion", False)).lower()
+    enable_bastion     = str(job.get("enable_bastion",     False)).lower()
 
     tfstate_sa = job.get("tfstate_storage_account", os.getenv("TFSTATE_STORAGE_ACCOUNT", ""))
     tfstate_rg = job.get("tfstate_resource_group",  os.getenv("TFSTATE_RESOURCE_GROUP", ""))
     state_key  = f"{company}-{env}.tfstate"
 
-    arm_env = {
+    cred_env = {
         "ARM_CLIENT_ID":       job.get("arm_client_id",     os.getenv("ARM_CLIENT_ID", "")),
         "ARM_CLIENT_SECRET":   job.get("arm_client_secret", os.getenv("ARM_CLIENT_SECRET", "")),
         "ARM_TENANT_ID":       job.get("arm_tenant_id",     os.getenv("ARM_TENANT_ID", "")),
         "ARM_SUBSCRIPTION_ID": sub_id,
     }
-
-    job_tf_dir = f"/tfwork/{job_id}"
-    if pathlib.Path(job_tf_dir).exists():
-        shutil.rmtree(job_tf_dir)
-    shutil.copytree("/terraform", job_tf_dir)
 
     var_file = f"{job_tf_dir}/terraform.tfvars"
     with open(var_file, "w") as f:
@@ -128,7 +117,7 @@ def run_terraform(job):
         update_job(job_id, "failed", msg)
         log.error(f"[{job_id[:8]}] ❌ {msg.splitlines()[0]}")
 
-    # ── Step 1: Init ─────────────────────────────────────────────────
+    # ── Init ────────────────────────────────────────────────────────
     update_job(job_id, "provisioning", "Initializing...", "Init")
     res = run(["terraform", "init", "-lock=false",
                f"-backend-config=resource_group_name={tfstate_rg}",
@@ -136,18 +125,17 @@ def run_terraform(job):
                "-backend-config=container_name=tfstate",
                f"-backend-config=key={state_key}",
                "-reconfigure", "-input=false", "-no-color"],
-              cwd=job_tf_dir, extra_env=arm_env)
+              cwd=job_tf_dir, extra_env=cred_env)
     if res.returncode != 0:
         return _fail(f"Init failed:\n{res.stderr}")
 
-    # ── Step 2: Validate ─────────────────────────────────────────────
+    # ── Validate ─────────────────────────────────────────────────────
     update_job(job_id, "provisioning", "Validating...", "Validate")
-    res = run(["terraform", "validate", "-no-color"],
-              cwd=job_tf_dir, extra_env=arm_env)
+    res = run(["terraform", "validate", "-no-color"], cwd=job_tf_dir, extra_env=cred_env)
     if res.returncode != 0:
         return _fail(f"Validate failed:\n{res.stderr}")
 
-    # ── Step 3: Pre-flight import ────────────────────────────────────
+    # ── Pre-flight import ─────────────────────────────────────────────
     update_job(job_id, "provisioning", "Importing existing resources...", "Pre-flight")
     log.info(f"[{job_id[:8]}] Pre-flight: importing any existing Azure resources...")
 
@@ -157,45 +145,40 @@ def run_terraform(job):
         (f"rg-{company}-ops-{env}",      "module.networking.azurerm_resource_group.ops"),
     ]:
         try_import(job_tf_dir, var_file, tf_addr,
-                   f"/subscriptions/{sub_id}/resourceGroups/{rg_name}",
-                   arm_env)
+                   f"/subscriptions/{sub_id}/resourceGroups/{rg_name}", cred_env)
 
     try_import(job_tf_dir, var_file,
                "module.security.azurerm_key_vault.main",
                f"/subscriptions/{sub_id}/resourceGroups/rg-{company}-security-{env}"
-               f"/providers/Microsoft.KeyVault/vaults/kv-{company}-{env}",
-               arm_env)
+               f"/providers/Microsoft.KeyVault/vaults/kv-{company}-{env}", cred_env)
 
     res = run(["az", "role", "definition", "list", "--custom-role-only", "true",
                "--query", f"[?roleName=='LZ Operator - {company} {env}'].id",
-               "-o", "tsv"], cwd="/tmp", extra_env=arm_env)
+               "-o", "tsv"], cwd="/tmp", extra_env=cred_env)
     role_id = res.stdout.strip()
     if role_id:
         try_import(job_tf_dir, var_file,
                    "module.identity.azurerm_role_definition.lz_operator",
-                   f"{role_id}|/subscriptions/{sub_id}",
-                   arm_env)
+                   f"{role_id}|/subscriptions/{sub_id}", cred_env)
 
     try_import(job_tf_dir, var_file,
                "module.budget.azurerm_consumption_budget_subscription.main",
                f"/subscriptions/{sub_id}/providers/Microsoft.Consumption/budgets/budget-{company}-{env}",
-               arm_env)
+               cred_env)
 
-    # ── Step 4: Plan ─────────────────────────────────────────────────
+    # ── Plan ─────────────────────────────────────────────────────────
     update_job(job_id, "provisioning", "Planning...", "Plan")
     res = run(["terraform", "plan", "-lock=false",
-               f"-var-file={var_file}",
-               "-input=false", "-no-color", "-detailed-exitcode"],
-              cwd=job_tf_dir, extra_env=arm_env)
+               f"-var-file={var_file}", "-input=false", "-no-color", "-detailed-exitcode"],
+              cwd=job_tf_dir, extra_env=cred_env)
     if res.returncode == 1:
         return _fail(f"Plan failed:\n{res.stderr}\n{res.stdout[-1000:]}")
 
-    # ── Step 5: Apply ────────────────────────────────────────────────
+    # ── Apply ─────────────────────────────────────────────────────────
     update_job(job_id, "provisioning", "Applying...", "Apply")
     res = run(["terraform", "apply", "-lock=false", "-auto-approve",
-               f"-var-file={var_file}",
-               "-input=false", "-no-color"],
-              cwd=job_tf_dir, extra_env=arm_env)
+               f"-var-file={var_file}", "-input=false", "-no-color"],
+              cwd=job_tf_dir, extra_env=cred_env)
 
     if res.returncode == 0:
         update_job(job_id, "completed", res.stdout[-3000:], "Completed")
@@ -204,8 +187,174 @@ def run_terraform(job):
         _fail(f"Apply failed:\n{res.stderr[-2000:]}")
 
 
+# ── AWS runner ───────────────────────────────────────────────────────
+def run_terraform_aws(job, job_tf_dir):
+    job_id  = job["job_id"]
+    company = job["company"]
+    env     = job["environment"]
+    region  = job.get("region", "us-east-1")
+    email   = job.get("email", "ops@example.com")
+    budget  = job.get("monthly_budget", 1000)
+    bucket  = job.get("tfstate_storage_account", os.getenv("TFSTATE_STORAGE_ACCOUNT", ""))
+    state_key = f"{company}-{env}.tfstate"
+
+    enable_guardduty    = str(job.get("enable_guardduty",    True)).lower()
+    enable_cloudtrail   = str(job.get("enable_cloudtrail",   True)).lower()
+    enable_security_hub = str(job.get("enable_security_hub", False)).lower()
+
+    cred_env = {
+        "AWS_ACCESS_KEY_ID":     job.get("aws_access_key_id",     ""),
+        "AWS_SECRET_ACCESS_KEY": job.get("aws_secret_access_key", ""),
+        "AWS_DEFAULT_REGION":    region,
+    }
+
+    var_file = f"{job_tf_dir}/terraform.tfvars"
+    with open(var_file, "w") as f:
+        f.write(f'company_name        = "{company}"\n')
+        f.write(f'environment         = "{env}"\n')
+        f.write(f'region              = "{region}"\n')
+        f.write(f'alert_email         = "{email}"\n')
+        f.write(f'monthly_budget      = {budget}\n')
+        f.write(f'enable_guardduty    = {enable_guardduty}\n')
+        f.write(f'enable_cloudtrail   = {enable_cloudtrail}\n')
+        f.write(f'enable_security_hub = {enable_security_hub}\n')
+
+    def _fail(msg):
+        update_job(job_id, "failed", msg)
+        log.error(f"[{job_id[:8]}] ❌ {msg.splitlines()[0]}")
+
+    update_job(job_id, "provisioning", "Initializing...", "Init")
+    res = run(["terraform", "init", "-lock=false",
+               f"-backend-config=bucket={bucket}",
+               f"-backend-config=key={state_key}",
+               f"-backend-config=region={region}",
+               "-reconfigure", "-input=false", "-no-color"],
+              cwd=job_tf_dir, extra_env=cred_env)
+    if res.returncode != 0:
+        return _fail(f"Init failed:\n{res.stderr}")
+
+    update_job(job_id, "provisioning", "Validating...", "Validate")
+    res = run(["terraform", "validate", "-no-color"], cwd=job_tf_dir, extra_env=cred_env)
+    if res.returncode != 0:
+        return _fail(f"Validate failed:\n{res.stderr}")
+
+    update_job(job_id, "provisioning", "Planning...", "Plan")
+    res = run(["terraform", "plan", "-lock=false",
+               f"-var-file={var_file}", "-input=false", "-no-color", "-detailed-exitcode"],
+              cwd=job_tf_dir, extra_env=cred_env)
+    if res.returncode == 1:
+        return _fail(f"Plan failed:\n{res.stderr}\n{res.stdout[-1000:]}")
+
+    update_job(job_id, "provisioning", "Applying...", "Apply")
+    res = run(["terraform", "apply", "-lock=false", "-auto-approve",
+               f"-var-file={var_file}", "-input=false", "-no-color"],
+              cwd=job_tf_dir, extra_env=cred_env)
+
+    if res.returncode == 0:
+        update_job(job_id, "completed", res.stdout[-3000:], "Completed")
+        log.info(f"[{job_id[:8]}] ✅ Completed successfully")
+    else:
+        _fail(f"Apply failed:\n{res.stderr[-2000:]}")
+
+
+# ── GCP runner ───────────────────────────────────────────────────────
+def run_terraform_gcp(job, job_tf_dir):
+    job_id             = job["job_id"]
+    company            = job["company"]
+    env                = job["environment"]
+    region             = job.get("region", "europe-west1")
+    email              = job.get("email", "ops@example.com")
+    budget             = job.get("monthly_budget", 1000)
+    project_id         = job.get("gcp_project_id", "")
+    billing_account_id = job.get("gcp_billing_account_id", "")
+    bucket             = job.get("tfstate_storage_account", os.getenv("TFSTATE_STORAGE_ACCOUNT", ""))
+    state_prefix       = f"{company}-{env}"
+
+    enable_cloud_nat  = str(job.get("enable_cloud_nat",  True)).lower()
+    enable_scc        = str(job.get("enable_scc",        False)).lower()
+    enable_cloud_armor = str(job.get("enable_cloud_armor", False)).lower()
+
+    cred_env = {
+        "GOOGLE_CREDENTIALS": job.get("gcp_service_account_json", ""),
+        "GOOGLE_PROJECT":     project_id,
+    }
+
+    var_file = f"{job_tf_dir}/terraform.tfvars"
+    with open(var_file, "w") as f:
+        f.write(f'company_name        = "{company}"\n')
+        f.write(f'environment         = "{env}"\n')
+        f.write(f'project_id          = "{project_id}"\n')
+        f.write(f'region              = "{region}"\n')
+        f.write(f'alert_email         = "{email}"\n')
+        f.write(f'monthly_budget      = {budget}\n')
+        f.write(f'billing_account_id  = "{billing_account_id}"\n')
+        f.write(f'enable_cloud_nat    = {enable_cloud_nat}\n')
+        f.write(f'enable_scc          = {enable_scc}\n')
+        f.write(f'enable_cloud_armor  = {enable_cloud_armor}\n')
+
+    def _fail(msg):
+        update_job(job_id, "failed", msg)
+        log.error(f"[{job_id[:8]}] ❌ {msg.splitlines()[0]}")
+
+    update_job(job_id, "provisioning", "Initializing...", "Init")
+    res = run(["terraform", "init", "-lock=false",
+               f"-backend-config=bucket={bucket}",
+               f"-backend-config=prefix={state_prefix}",
+               "-reconfigure", "-input=false", "-no-color"],
+              cwd=job_tf_dir, extra_env=cred_env)
+    if res.returncode != 0:
+        return _fail(f"Init failed:\n{res.stderr}")
+
+    update_job(job_id, "provisioning", "Validating...", "Validate")
+    res = run(["terraform", "validate", "-no-color"], cwd=job_tf_dir, extra_env=cred_env)
+    if res.returncode != 0:
+        return _fail(f"Validate failed:\n{res.stderr}")
+
+    update_job(job_id, "provisioning", "Planning...", "Plan")
+    res = run(["terraform", "plan", "-lock=false",
+               f"-var-file={var_file}", "-input=false", "-no-color", "-detailed-exitcode"],
+              cwd=job_tf_dir, extra_env=cred_env)
+    if res.returncode == 1:
+        return _fail(f"Plan failed:\n{res.stderr}\n{res.stdout[-1000:]}")
+
+    update_job(job_id, "provisioning", "Applying...", "Apply")
+    res = run(["terraform", "apply", "-lock=false", "-auto-approve",
+               f"-var-file={var_file}", "-input=false", "-no-color"],
+              cwd=job_tf_dir, extra_env=cred_env)
+
+    if res.returncode == 0:
+        update_job(job_id, "completed", res.stdout[-3000:], "Completed")
+        log.info(f"[{job_id[:8]}] ✅ Completed successfully")
+    else:
+        _fail(f"Apply failed:\n{res.stderr[-2000:]}")
+
+
+# ── Dispatch ─────────────────────────────────────────────────────────
+def run_terraform(job):
+    job_id   = job["job_id"]
+    company  = job["company"].lower().replace(" ", "-")
+    env      = job["environment"].lower()
+    provider = job.get("cloud_provider", "azure")
+
+    job_tf_dir = f"/tfwork/{job_id}"
+    if pathlib.Path(job_tf_dir).exists():
+        shutil.rmtree(job_tf_dir)
+    shutil.copytree(f"/terraform/{provider}", job_tf_dir)
+
+    log.info(f"[{job_id[:8]}] Provider: {provider} | {company} | {env}")
+
+    if provider == "azure":
+        run_terraform_azure(job, job_tf_dir)
+    elif provider == "aws":
+        run_terraform_aws(job, job_tf_dir)
+    elif provider == "gcp":
+        run_terraform_gcp(job, job_tf_dir)
+    else:
+        update_job(job_id, "failed", f"Unknown cloud provider: {provider}")
+
+
 # ── Main loop ────────────────────────────────────────────────────────
-log.info("✅ Velox Worker started — waiting for jobs...")
+log.info("✅ LZForge Worker started — waiting for jobs...")
 pathlib.Path("/tfwork/.plugin-cache").mkdir(parents=True, exist_ok=True)
 
 _backoff = 2  # seconds, doubles on repeated failures up to _backoff_max
@@ -219,7 +368,8 @@ while True:
             continue
         _, payload = item
         job = decrypt_payload(payload)
-        log.info(f"📦 New job: {job['job_id'][:8]} | {job['company']} | {job['environment']}")
+        provider = job.get("cloud_provider", "azure")
+        log.info(f"📦 New job: {job['job_id'][:8]} | [{provider.upper()}] {job['company']} | {job['environment']}")
         run_terraform(job)
         _backoff = 2  # reset after successful job
     except redis.exceptions.ConnectionError:

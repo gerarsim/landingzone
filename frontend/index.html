@@ -61,6 +61,20 @@
   .hero-scroll span{font-family:var(--mono);font-size:.62rem;text-transform:uppercase;letter-spacing:.2em;color:var(--muted)}
   .scroll-line{width:1px;height:50px;background:linear-gradient(to bottom,var(--amber),transparent);animation:scrollPulse 1.8s ease-in-out infinite}
 
+  /* ── CLOUD PROVIDER SELECTOR ── */
+  .provider-tabs{display:flex;gap:0;margin-bottom:1.2rem;border:1px solid var(--border2)}
+  .provider-tab{
+    font-family:var(--mono);font-size:.7rem;font-weight:500;
+    text-transform:uppercase;letter-spacing:.12em;
+    flex:1;padding:.6rem .5rem;border:none;background:transparent;
+    color:var(--muted2);cursor:pointer;display:flex;align-items:center;
+    justify-content:center;gap:.4rem;border-right:1px solid var(--border2);
+    transition:all .2s;
+  }
+  .provider-tab:last-child{border-right:none}
+  .provider-tab.active{background:rgba(245,166,35,.08);color:var(--amber)}
+  .provider-tab:hover:not(.active){background:rgba(255,255,255,.03);color:var(--white)}
+
   /* ── PROVISION FORM ── */
   .form-section-label{
     font-family:var(--mono);font-size:.65rem;font-weight:500;
@@ -331,10 +345,27 @@
 
   <p class="hero-eyebrow">Enterprise SaaS Platform</p>
   <h1 class="hero-title">Infrastructure at the<br /><strong>Speed of Intent</strong></h1>
-  <p class="hero-sub">Deploy, scale, and operate Azure Landing Zones with surgical precision. Enter your credentials — we handle the rest.</p>
+  <p class="hero-sub">Deploy, scale, and operate Landing Zones across Azure, AWS, and GCP with surgical precision. Select your cloud, enter credentials — we handle the rest.</p>
 
   <div class="hero-actions">
     <form id="landingForm" autocomplete="off" novalidate>
+
+      <!-- ── Cloud Provider Selector ── -->
+      <div class="provider-tabs" role="tablist">
+        <button type="button" class="provider-tab active" data-provider="azure" role="tab">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 3h4l2 3-3 2 4 4H2V3z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><path d="M6 3h6l-4 8" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>
+          Azure
+        </button>
+        <button type="button" class="provider-tab" data-provider="aws" role="tab">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 9c0-2 2-4 5-4s5 2 5 4" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><path d="M1 11c1-.5 2-.5 3 0s2 .5 3 0 2-.5 3 0" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/><circle cx="7" cy="4" r="1.5" stroke="currentColor" stroke-width="1.2"/></svg>
+          AWS
+        </button>
+        <button type="button" class="provider-tab" data-provider="gcp" role="tab">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5" stroke="currentColor" stroke-width="1.2"/><path d="M7 2v10M2 7h10" stroke="currentColor" stroke-width="1.2"/></svg>
+          GCP
+        </button>
+      </div>
+      <input type="hidden" name="cloud_provider" id="f-cloud-provider" value="azure" />
 
       <!-- ── LZ Parameters ── -->
       <div class="form-section-label">Landing Zone</div>
@@ -357,19 +388,8 @@
           <div class="field-error" id="err-environment"></div>
         </div>
         <div class="field-wrap">
-          <label for="f-region">Azure Region</label>
-          <select id="f-region" name="region">
-            <option value="westeurope">West Europe</option>
-            <option value="northeurope">North Europe</option>
-            <option value="uksouth">UK South</option>
-            <option value="ukwest">UK West</option>
-            <option value="eastus">East US</option>
-            <option value="eastus2">East US 2</option>
-            <option value="westus2">West US 2</option>
-            <option value="centralus">Central US</option>
-            <option value="southeastasia">Southeast Asia</option>
-            <option value="australiaeast">Australia East</option>
-          </select>
+          <label for="f-region" id="region-label">Region</label>
+          <select id="f-region" name="region"></select>
         </div>
         <div class="field-wrap">
           <label for="f-budget">Monthly Budget (USD)</label>
@@ -382,83 +402,167 @@
         </div>
       </div>
 
-      <!-- ── Feature Flags ── -->
+      <!-- ── Feature Flags (provider-specific) ── -->
       <div class="form-section-label" style="margin-top:1rem">Feature Flags</div>
-      <div class="flags-row" id="flagsRow">
-        <div class="flag-chip active" data-flag="enable_firewall">
-          <span class="dot"></span> Azure Firewall
-        </div>
-        <div class="flag-chip" data-flag="enable_vpn_gateway">
-          <span class="dot"></span> VPN Gateway
-        </div>
-        <div class="flag-chip active" data-flag="enable_bastion">
-          <span class="dot"></span> Bastion Host
-        </div>
+
+      <!-- Azure flags -->
+      <div class="flags-row provider-flags" data-for="azure">
+        <div class="flag-chip active" data-flag="enable_firewall"><span class="dot"></span> Azure Firewall</div>
+        <div class="flag-chip" data-flag="enable_vpn_gateway"><span class="dot"></span> VPN Gateway</div>
+        <div class="flag-chip active" data-flag="enable_bastion"><span class="dot"></span> Bastion Host</div>
       </div>
-      <!-- hidden inputs for flags -->
       <input type="hidden" name="enable_firewall"    id="flag-enable_firewall"    value="true" />
       <input type="hidden" name="enable_vpn_gateway" id="flag-enable_vpn_gateway" value="false" />
       <input type="hidden" name="enable_bastion"     id="flag-enable_bastion"     value="true" />
 
-      <!-- ── Azure Credentials ── -->
+      <!-- AWS flags -->
+      <div class="flags-row provider-flags" data-for="aws" style="display:none">
+        <div class="flag-chip active" data-flag="enable_guardduty"><span class="dot"></span> GuardDuty</div>
+        <div class="flag-chip active" data-flag="enable_cloudtrail"><span class="dot"></span> CloudTrail</div>
+        <div class="flag-chip" data-flag="enable_security_hub"><span class="dot"></span> Security Hub</div>
+      </div>
+      <input type="hidden" name="enable_guardduty"    id="flag-enable_guardduty"    value="true" />
+      <input type="hidden" name="enable_cloudtrail"   id="flag-enable_cloudtrail"   value="true" />
+      <input type="hidden" name="enable_security_hub" id="flag-enable_security_hub" value="false" />
+
+      <!-- GCP flags -->
+      <div class="flags-row provider-flags" data-for="gcp" style="display:none">
+        <div class="flag-chip active" data-flag="enable_cloud_nat"><span class="dot"></span> Cloud NAT</div>
+        <div class="flag-chip" data-flag="enable_scc"><span class="dot"></span> Security Command Center</div>
+        <div class="flag-chip" data-flag="enable_cloud_armor"><span class="dot"></span> Cloud Armor WAF</div>
+      </div>
+      <input type="hidden" name="enable_cloud_nat"   id="flag-enable_cloud_nat"   value="true" />
+      <input type="hidden" name="enable_scc"         id="flag-enable_scc"         value="false" />
+      <input type="hidden" name="enable_cloud_armor" id="flag-enable_cloud_armor" value="false" />
+
+      <!-- ── Credentials (provider-specific) ── -->
       <button type="button" class="creds-toggle" id="credsToggle">
         <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
           <rect x="1" y="4" width="10" height="7" rx="1" stroke="currentColor" stroke-width="1.3"/>
           <path d="M4 4V3a2 2 0 014 0v1" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
         </svg>
-        Azure Service Principal Credentials
+        <span id="credsToggleLabel">Azure Service Principal Credentials</span>
         <span class="creds-status" id="credsStatus">✓ Set</span>
         <svg width="10" height="6" viewBox="0 0 10 6" fill="none">
           <path d="M1 1l4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
         </svg>
       </button>
       <div class="creds-body" id="credsBody">
-        <p class="creds-note">
-          Your credentials are used only at provisioning time and are never persisted to disk or logs.
-          They expire automatically from the queue within 24 hours.<br/><br/>
-          Need a Service Principal? <code style="color:var(--amber)">az ad sp create-for-rbac --name lzforge-sp --role Owner --scopes /subscriptions/&lt;id&gt;</code>
-        </p>
-        <div class="provision-form">
-          <div class="field-wrap">
-            <label for="f-client-id">Client ID (App ID)</label>
-            <input id="f-client-id" name="arm_client_id" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" required />
-            <div class="field-error" id="err-arm_client_id"></div>
-          </div>
-          <div class="field-wrap secret-wrap">
-            <label for="f-client-secret">Client Secret</label>
-            <input id="f-client-secret" name="arm_client_secret" type="password" placeholder="Your SP secret value" required />
-            <button type="button" class="secret-toggle" data-target="f-client-secret" title="Show/hide">
-              <svg id="eye-client-secret" width="16" height="16" viewBox="0 0 16 16" fill="none">
-                <path d="M1 8s2.5-5 7-5 7 5 7 5-2.5 5-7 5-7-5-7-5z" stroke="currentColor" stroke-width="1.3"/>
-                <circle cx="8" cy="8" r="2" stroke="currentColor" stroke-width="1.3"/>
-              </svg>
-            </button>
-            <div class="field-error" id="err-arm_client_secret"></div>
-          </div>
-          <div class="field-wrap">
-            <label for="f-tenant-id">Tenant ID</label>
-            <input id="f-tenant-id" name="arm_tenant_id" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" required />
-            <div class="field-error" id="err-arm_tenant_id"></div>
-          </div>
-          <div class="field-wrap">
-            <label for="f-subscription-id">Subscription ID</label>
-            <input id="f-subscription-id" name="arm_subscription_id" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" required />
-            <div class="field-error" id="err-arm_subscription_id"></div>
-          </div>
-          <!-- Optional: Terraform state override -->
-          <div class="field-wrap">
-            <label for="f-sa">TF State Storage Account <span style="color:var(--muted)">(optional)</span></label>
-            <input id="f-sa" name="tfstate_storage_account" placeholder="lzforgetfstate" />
-          </div>
-          <div class="field-wrap">
-            <label for="f-rg">TF State Resource Group <span style="color:var(--muted)">(optional)</span></label>
-            <input id="f-rg" name="tfstate_resource_group" placeholder="rg-lzforge-tfstate" />
+
+        <!-- Azure credentials -->
+        <div class="provider-creds" data-for="azure">
+          <p class="creds-note">
+            Credentials are used only at provisioning time and auto-expire from the queue within 24 hours.<br/><br/>
+            Need an SP? <code style="color:var(--amber)">az ad sp create-for-rbac --name lzforge-sp --role Owner --scopes /subscriptions/&lt;id&gt;</code>
+          </p>
+          <div class="provision-form">
+            <div class="field-wrap">
+              <label for="f-client-id">Client ID (App ID)</label>
+              <input id="f-client-id" name="arm_client_id" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" />
+              <div class="field-error" id="err-arm_client_id"></div>
+            </div>
+            <div class="field-wrap secret-wrap">
+              <label for="f-client-secret">Client Secret</label>
+              <input id="f-client-secret" name="arm_client_secret" type="password" placeholder="Your SP secret value" />
+              <button type="button" class="secret-toggle" data-target="f-client-secret" title="Show/hide">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                  <path d="M1 8s2.5-5 7-5 7 5 7 5-2.5 5-7 5-7-5-7-5z" stroke="currentColor" stroke-width="1.3"/>
+                  <circle cx="8" cy="8" r="2" stroke="currentColor" stroke-width="1.3"/>
+                </svg>
+              </button>
+              <div class="field-error" id="err-arm_client_secret"></div>
+            </div>
+            <div class="field-wrap">
+              <label for="f-tenant-id">Tenant ID</label>
+              <input id="f-tenant-id" name="arm_tenant_id" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" />
+              <div class="field-error" id="err-arm_tenant_id"></div>
+            </div>
+            <div class="field-wrap">
+              <label for="f-subscription-id">Subscription ID</label>
+              <input id="f-subscription-id" name="arm_subscription_id" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" />
+              <div class="field-error" id="err-arm_subscription_id"></div>
+            </div>
+            <div class="field-wrap">
+              <label for="f-sa">TF State Storage Account <span style="color:var(--muted)">(optional)</span></label>
+              <input id="f-sa" name="tfstate_storage_account" placeholder="lzforgetfstate" />
+            </div>
+            <div class="field-wrap">
+              <label for="f-rg">TF State Resource Group <span style="color:var(--muted)">(optional)</span></label>
+              <input id="f-rg" name="tfstate_resource_group" placeholder="rg-lzforge-tfstate" />
+            </div>
           </div>
         </div>
+
+        <!-- AWS credentials -->
+        <div class="provider-creds" data-for="aws" style="display:none">
+          <p class="creds-note">
+            Credentials are used only at provisioning time and auto-expire from the queue within 24 hours.<br/><br/>
+            Create an IAM user with <code style="color:var(--amber)">AdministratorAccess</code> and generate access keys.
+          </p>
+          <div class="provision-form">
+            <div class="field-wrap">
+              <label for="f-aws-key-id">Access Key ID</label>
+              <input id="f-aws-key-id" name="aws_access_key_id" placeholder="AKIAIOSFODNN7EXAMPLE" />
+              <div class="field-error" id="err-aws_access_key_id"></div>
+            </div>
+            <div class="field-wrap secret-wrap">
+              <label for="f-aws-secret">Secret Access Key</label>
+              <input id="f-aws-secret" name="aws_secret_access_key" type="password" placeholder="wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY" />
+              <button type="button" class="secret-toggle" data-target="f-aws-secret" title="Show/hide">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                  <path d="M1 8s2.5-5 7-5 7 5 7 5-2.5 5-7 5-7-5-7-5z" stroke="currentColor" stroke-width="1.3"/>
+                  <circle cx="8" cy="8" r="2" stroke="currentColor" stroke-width="1.3"/>
+                </svg>
+              </button>
+              <div class="field-error" id="err-aws_secret_access_key"></div>
+            </div>
+            <div class="field-wrap span-2">
+              <label for="f-aws-account">AWS Account ID</label>
+              <input id="f-aws-account" name="aws_account_id" placeholder="123456789012" />
+              <div class="field-error" id="err-aws_account_id"></div>
+            </div>
+            <div class="field-wrap span-2">
+              <label for="f-aws-bucket">TF State S3 Bucket <span style="color:var(--muted)">(optional)</span></label>
+              <input id="f-aws-bucket" name="tfstate_storage_account" placeholder="my-tfstate-bucket" />
+            </div>
+          </div>
+        </div>
+
+        <!-- GCP credentials -->
+        <div class="provider-creds" data-for="gcp" style="display:none">
+          <p class="creds-note">
+            Credentials are used only at provisioning time and auto-expire from the queue within 24 hours.<br/><br/>
+            Create a Service Account with <code style="color:var(--amber)">Owner</code> role and download the JSON key.
+          </p>
+          <div class="provision-form">
+            <div class="field-wrap span-2">
+              <label for="f-gcp-sa-json">Service Account JSON Key</label>
+              <textarea id="f-gcp-sa-json" name="gcp_service_account_json"
+                placeholder='{"type":"service_account","project_id":"...","private_key":"..."}'
+                style="font-family:var(--mono);font-size:.72rem;background:rgba(255,255,255,.04);border:1px solid var(--border2);color:var(--white);padding:.75rem 1rem;outline:none;width:100%;min-height:80px;resize:vertical;transition:border-color .2s"
+                onfocus="this.style.borderColor='var(--amber)'" onblur="this.style.borderColor='var(--border2)'"></textarea>
+              <div class="field-error" id="err-gcp_service_account_json"></div>
+            </div>
+            <div class="field-wrap">
+              <label for="f-gcp-project">GCP Project ID</label>
+              <input id="f-gcp-project" name="gcp_project_id" placeholder="my-project-123456" />
+              <div class="field-error" id="err-gcp_project_id"></div>
+            </div>
+            <div class="field-wrap">
+              <label for="f-gcp-billing">Billing Account ID <span style="color:var(--muted)">(optional)</span></label>
+              <input id="f-gcp-billing" name="gcp_billing_account_id" placeholder="XXXXXX-XXXXXX-XXXXXX" />
+            </div>
+            <div class="field-wrap span-2">
+              <label for="f-gcp-bucket">TF State GCS Bucket <span style="color:var(--muted)">(optional)</span></label>
+              <input id="f-gcp-bucket" name="tfstate_storage_account" placeholder="my-tfstate-bucket" />
+            </div>
+          </div>
+        </div>
+
       </div>
 
       <button type="submit" class="provision-submit" id="submitBtn">
-        Provision Azure Landing Zone
+        <span id="submitBtnLabel">Provision Azure Landing Zone</span>
         <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
           <path d="M2 7h10M8 3l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
         </svg>
@@ -669,20 +773,73 @@
 const API_BASE = 'http://devopserver.ddns.net/api';
 
 const STEPS = [
-  { key: 'bootstrap',    label: 'Bootstrap remote state storage' },
-  { key: 'init',         label: 'Terraform init'                  },
-  { key: 'validate',     label: 'Validate configuration'          },
-  { key: 'plan',         label: 'Generate execution plan'         },
-  { key: 'apply',        label: 'Apply — provisioning Azure resources' },
-  { key: 'completed',    label: 'Landing Zone ready'              },
+  { key: 'init',      label: 'Terraform init'          },
+  { key: 'validate',  label: 'Validate configuration'  },
+  { key: 'pre-flight',label: 'Pre-flight checks'       },
+  { key: 'plan',      label: 'Generate execution plan' },
+  { key: 'apply',     label: 'Apply — provisioning resources' },
+  { key: 'completed', label: 'Landing Zone ready'      },
 ];
 
 const STATUS_TEXT = {
   queued:       'Job Queued...',
-  provisioning: 'Provisioning Azure Resources...',
+  provisioning: 'Provisioning Cloud Resources...',
   completed:    '✓  Landing Zone Ready',
   failed:       '✗  Provisioning Failed',
 };
+
+// ── Regions per provider ─────────────────────────────────────────────
+const REGIONS = {
+  azure: [
+    { value: 'westeurope',    label: 'West Europe'     },
+    { value: 'northeurope',   label: 'North Europe'    },
+    { value: 'uksouth',       label: 'UK South'        },
+    { value: 'ukwest',        label: 'UK West'         },
+    { value: 'eastus',        label: 'East US'         },
+    { value: 'eastus2',       label: 'East US 2'       },
+    { value: 'westus2',       label: 'West US 2'       },
+    { value: 'centralus',     label: 'Central US'      },
+    { value: 'southeastasia', label: 'Southeast Asia'  },
+    { value: 'australiaeast', label: 'Australia East'  },
+  ],
+  aws: [
+    { value: 'us-east-1',      label: 'US East (N. Virginia)'   },
+    { value: 'us-east-2',      label: 'US East (Ohio)'          },
+    { value: 'us-west-1',      label: 'US West (N. California)' },
+    { value: 'us-west-2',      label: 'US West (Oregon)'        },
+    { value: 'eu-west-1',      label: 'Europe (Ireland)'        },
+    { value: 'eu-west-2',      label: 'Europe (London)'         },
+    { value: 'eu-central-1',   label: 'Europe (Frankfurt)'      },
+    { value: 'ap-southeast-1', label: 'Asia Pacific (Singapore)'},
+    { value: 'ap-southeast-2', label: 'Asia Pacific (Sydney)'   },
+    { value: 'ap-northeast-1', label: 'Asia Pacific (Tokyo)'    },
+  ],
+  gcp: [
+    { value: 'europe-west1',     label: 'Belgium (europe-west1)'       },
+    { value: 'europe-west2',     label: 'London (europe-west2)'        },
+    { value: 'europe-west3',     label: 'Frankfurt (europe-west3)'     },
+    { value: 'us-central1',      label: 'Iowa (us-central1)'           },
+    { value: 'us-east1',         label: 'South Carolina (us-east1)'    },
+    { value: 'us-west1',         label: 'Oregon (us-west1)'            },
+    { value: 'asia-east1',       label: 'Taiwan (asia-east1)'          },
+    { value: 'asia-southeast1',  label: 'Singapore (asia-southeast1)'  },
+    { value: 'australia-southeast1', label: 'Sydney (australia-southeast1)' },
+  ],
+};
+
+const PROVIDER_LABELS = {
+  azure: 'Azure Service Principal Credentials',
+  aws:   'AWS IAM Credentials',
+  gcp:   'GCP Service Account Credentials',
+};
+
+const SUBMIT_LABELS = {
+  azure: 'Provision Azure Landing Zone',
+  aws:   'Provision AWS Landing Zone',
+  gcp:   'Provision GCP Landing Zone',
+};
+
+let currentProvider = 'azure';
 
 // ── Cursor ──────────────────────────────────────────────────────────
 const dot = document.getElementById('cursorDot');
@@ -731,6 +888,48 @@ const metricObs = new IntersectionObserver(entries=>{
 },{threshold:.3});
 document.querySelectorAll('.metrics').forEach(m=>metricObs.observe(m));
 
+// ── Provider selector ────────────────────────────────────────────────
+function populateRegions(provider){
+  const sel = document.getElementById('f-region');
+  sel.innerHTML = REGIONS[provider].map(r=>`<option value="${r.value}">${r.label}</option>`).join('');
+}
+
+function selectProvider(provider){
+  currentProvider = provider;
+  document.getElementById('f-cloud-provider').value = provider;
+
+  // Tabs
+  document.querySelectorAll('.provider-tab').forEach(t=>{
+    t.classList.toggle('active', t.dataset.provider === provider);
+  });
+
+  // Regions
+  populateRegions(provider);
+
+  // Feature flag rows
+  document.querySelectorAll('.provider-flags').forEach(row=>{
+    row.style.display = row.dataset.for === provider ? 'flex' : 'none';
+  });
+
+  // Credential sections
+  document.querySelectorAll('.provider-creds').forEach(sec=>{
+    sec.style.display = sec.dataset.for === provider ? 'block' : 'none';
+  });
+
+  // Labels
+  document.getElementById('credsToggleLabel').textContent = PROVIDER_LABELS[provider];
+  document.getElementById('submitBtnLabel').textContent   = SUBMIT_LABELS[provider];
+
+  checkCreds();
+}
+
+document.querySelectorAll('.provider-tab').forEach(tab=>{
+  tab.addEventListener('click',()=>selectProvider(tab.dataset.provider));
+});
+
+// Init regions on load
+populateRegions('azure');
+
 // ── Feature flags ────────────────────────────────────────────────────
 document.querySelectorAll('.flag-chip').forEach(chip=>{
   chip.addEventListener('click',()=>{
@@ -756,16 +955,21 @@ document.querySelectorAll('.secret-toggle').forEach(btn=>{
   });
 });
 
-// Mark credentials as set when all 4 GUID fields are filled
+// Mark credentials as set
 function checkCreds(){
-  const ids=['f-client-id','f-tenant-id','f-subscription-id','f-client-secret'];
-  const all = ids.every(id=>document.getElementById(id).value.trim().length>0);
   const status = document.getElementById('credsStatus');
-  if(all){status.classList.add('visible')}else{status.classList.remove('visible')}
+  let filled = false;
+  if(currentProvider==='azure'){
+    const ids=['f-client-id','f-tenant-id','f-subscription-id','f-client-secret'];
+    filled = ids.every(id=>document.getElementById(id)?.value.trim().length>0);
+  } else if(currentProvider==='aws'){
+    filled = ['f-aws-key-id','f-aws-secret','f-aws-account'].every(id=>document.getElementById(id)?.value.trim().length>0);
+  } else if(currentProvider==='gcp'){
+    filled = ['f-gcp-sa-json','f-gcp-project'].every(id=>document.getElementById(id)?.value.trim().length>0);
+  }
+  status.classList.toggle('visible', filled);
 }
-['f-client-id','f-tenant-id','f-subscription-id','f-client-secret'].forEach(id=>{
-  document.getElementById(id).addEventListener('input',checkCreds);
-});
+document.getElementById('landingForm').addEventListener('input', checkCreds);
 
 // ── GUID validation helper ────────────────────────────────────────────
 const GUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -783,28 +987,41 @@ function clearError(fieldName){
   if(el){el.textContent='';el.classList.remove('visible')}
   if(inp)inp.classList.remove('error');
 }
+
 function validateForm(data){
   let ok=true;
-  ['company','environment','email','arm_client_id','arm_client_secret','arm_tenant_id','arm_subscription_id'].forEach(f=>clearError(f));
+  const allFields=['company','environment','email',
+    'arm_client_id','arm_client_secret','arm_tenant_id','arm_subscription_id',
+    'aws_access_key_id','aws_secret_access_key','aws_account_id',
+    'gcp_service_account_json','gcp_project_id'];
+  allFields.forEach(f=>clearError(f));
 
   if(!data.company){showError('company','Required');ok=false}
   if(!data.environment){showError('environment','Required');ok=false}
   if(!data.email||!data.email.includes('@')){showError('email','Valid email required');ok=false}
 
-  if(!data.arm_client_id){showError('arm_client_id','Required');ok=false}
-  else if(!isGuid(data.arm_client_id)){showError('arm_client_id','Must be a valid GUID');ok=false}
+  const provider = data.cloud_provider || 'azure';
+  let credsMissing = false;
 
-  if(!data.arm_client_secret){showError('arm_client_secret','Required');ok=false}
+  if(provider==='azure'){
+    if(!data.arm_client_id){showError('arm_client_id','Required');ok=false;credsMissing=true}
+    else if(!isGuid(data.arm_client_id)){showError('arm_client_id','Must be a valid GUID');ok=false}
+    if(!data.arm_client_secret){showError('arm_client_secret','Required');ok=false;credsMissing=true}
+    if(!data.arm_tenant_id){showError('arm_tenant_id','Required');ok=false;credsMissing=true}
+    else if(!isGuid(data.arm_tenant_id)){showError('arm_tenant_id','Must be a valid GUID');ok=false}
+    if(!data.arm_subscription_id){showError('arm_subscription_id','Required');ok=false;credsMissing=true}
+    else if(!isGuid(data.arm_subscription_id)){showError('arm_subscription_id','Must be a valid GUID');ok=false}
+  } else if(provider==='aws'){
+    if(!data.aws_access_key_id){showError('aws_access_key_id','Required');ok=false;credsMissing=true}
+    if(!data.aws_secret_access_key){showError('aws_secret_access_key','Required');ok=false;credsMissing=true}
+    if(!data.aws_account_id){showError('aws_account_id','Required');ok=false;credsMissing=true}
+  } else if(provider==='gcp'){
+    if(!data.gcp_service_account_json){showError('gcp_service_account_json','Required');ok=false;credsMissing=true}
+    if(!data.gcp_project_id){showError('gcp_project_id','Required');ok=false;credsMissing=true}
+  }
 
-  if(!data.arm_tenant_id){showError('arm_tenant_id','Required');ok=false}
-  else if(!isGuid(data.arm_tenant_id)){showError('arm_tenant_id','Must be a valid GUID');ok=false}
-
-  if(!data.arm_subscription_id){showError('arm_subscription_id','Required');ok=false}
-  else if(!isGuid(data.arm_subscription_id)){showError('arm_subscription_id','Must be a valid GUID');ok=false}
-
-  // Auto-open creds section if there are credential errors
-  if(!ok && !credsBody.classList.contains('open') &&
-    (data.arm_client_id===''||data.arm_client_secret===''||data.arm_tenant_id===''||data.arm_subscription_id==='')){
+  // Auto-open creds section on error
+  if(credsMissing && !credsBody.classList.contains('open')){
     credsToggle.classList.add('open');
     credsBody.classList.add('open');
   }
@@ -872,10 +1089,16 @@ document.getElementById('landingForm').addEventListener('submit',async e=>{
   const data = Object.fromEntries(fd);
 
   // Cast typed fields
-  data.monthly_budget   = parseInt(data.monthly_budget)||1000;
-  data.enable_firewall    = data.enable_firewall==='true';
-  data.enable_vpn_gateway = data.enable_vpn_gateway==='true';
-  data.enable_bastion     = data.enable_bastion==='true';
+  data.monthly_budget      = parseInt(data.monthly_budget)||1000;
+  data.enable_firewall     = data.enable_firewall==='true';
+  data.enable_vpn_gateway  = data.enable_vpn_gateway==='true';
+  data.enable_bastion      = data.enable_bastion==='true';
+  data.enable_guardduty    = data.enable_guardduty==='true';
+  data.enable_cloudtrail   = data.enable_cloudtrail==='true';
+  data.enable_security_hub = data.enable_security_hub==='true';
+  data.enable_cloud_nat    = data.enable_cloud_nat==='true';
+  data.enable_scc          = data.enable_scc==='true';
+  data.enable_cloud_armor  = data.enable_cloud_armor==='true';
 
   if(!validateForm(data)) return;
 
@@ -904,7 +1127,7 @@ document.getElementById('landingForm').addEventListener('submit',async e=>{
   }catch(err){
     setStatus('failed',null,err.message,[]);
     submitBtn.disabled=false;
-    submitBtn.innerHTML='Provision Azure Landing Zone →';
+    submitBtn.innerHTML=`<span id="submitBtnLabel">${SUBMIT_LABELS[currentProvider]}</span> →`;
   }
 });
 </script>

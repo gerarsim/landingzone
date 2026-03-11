@@ -1,5 +1,5 @@
 # ═══════════════════════════════════════════════════════════════════
-# VELOX — Root Variables
+# LZForge — Azure Root Variables
 # All values are written per-job into a .tfvars file by the worker.
 # ARM credentials are passed as ARM_* environment variables — never
 # written into tfvars files to avoid secrets in state files.
