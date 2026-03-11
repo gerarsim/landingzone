@@ -2,7 +2,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from cryptography.fernet import Fernet
 from pydantic import BaseModel, EmailStr, field_validator
-import redis, json, uuid, os, re, logging, base64
+import redis, json, uuid, os, re, logging, time
 
 logging.basicConfig(
     level=logging.INFO,
@@ -11,18 +11,29 @@ logging.basicConfig(
 )
 log = logging.getLogger(__name__)
 
-app = FastAPI(title="Velox Provisioning API")
+app = FastAPI(title="LZForge Provisioning API")
 
 r = redis.from_url(os.getenv("REDIS_URL", "redis://redis:6379"), decode_responses=True)
 
-# ── Encryption (Fernet symmetric) ────────────────────────────────────
-_raw_key = os.getenv("REDIS_ENCRYPT_KEY", "")
-if _raw_key:
-    _fernet = Fernet(_raw_key.encode())
-else:
-    # Generate ephemeral key at startup (jobs survive only while container runs)
-    log.warning("REDIS_ENCRYPT_KEY not set — using ephemeral key; set it for persistence")
-    _fernet = Fernet(Fernet.generate_key())
+# ── Encryption — key auto-managed in Redis, no manual config needed ───
+def _get_fernet() -> "Fernet":
+    from cryptography.fernet import Fernet
+    for attempt in range(10):
+        try:
+            key = r.get("_encrypt_key")
+            if key:
+                return Fernet(key.encode())
+            new_key = Fernet.generate_key().decode()
+            if r.setnx("_encrypt_key", new_key):
+                log.info("Encryption key created and stored in Redis")
+                return Fernet(new_key.encode())
+            key = r.get("_encrypt_key")
+            return Fernet(key.encode())
+        except Exception:
+            time.sleep(1)
+    raise RuntimeError("Cannot connect to Redis to retrieve encryption key")
+
+_fernet = _get_fernet()
 
 
 def encrypt_payload(data: dict) -> str:
@@ -155,9 +166,9 @@ def provision(req: ProvisionRequest):
 
         # Remote state config
         "tfstate_storage_account": req.tfstate_storage_account
-            or os.getenv("TFSTATE_STORAGE_ACCOUNT", "veloxtfstate"),
+            or os.getenv("TFSTATE_STORAGE_ACCOUNT", "lzforgetfstate"),
         "tfstate_resource_group": req.tfstate_resource_group
-            or os.getenv("TFSTATE_RESOURCE_GROUP", "rg-velox-tfstate"),
+            or os.getenv("TFSTATE_RESOURCE_GROUP", "rg-lzforge-tfstate"),
         "tfstate_container": req.tfstate_container,
     }
 

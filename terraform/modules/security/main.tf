@@ -53,7 +53,7 @@ resource "azurerm_key_vault_secret" "lz_metadata" {
   value        = jsonencode({
     company     = var.company_name
     environment = var.environment
-    deployed_by = "velox-terraform"
+    deployed_by = "lzforge-terraform"
   })
   key_vault_id = azurerm_key_vault.main.id
   depends_on   = [azurerm_role_assignment.kv_admin]

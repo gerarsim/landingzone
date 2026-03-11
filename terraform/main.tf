@@ -28,7 +28,7 @@ locals {
   tags = {
     environment = var.environment
     company     = var.company_name
-    managed_by  = "velox-terraform"
+    managed_by  = "lzforge-terraform"
   }
 }
 

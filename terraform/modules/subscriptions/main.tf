@@ -35,5 +35,5 @@ resource "azurerm_management_lock" "subscription_lock" {
   name       = "lock-${each.key}-dontdelete"
   scope      = "/subscriptions/${each.value.subscription_id}"
   lock_level = "CanNotDelete"
-  notes      = "Managed by Velox Terraform. Do not delete without approval."
+  notes      = "Managed by LZForge Terraform. Do not delete without approval."
 }

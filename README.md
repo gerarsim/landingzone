@@ -1,4 +1,4 @@
-# Velox — Azure Landing Zone Demo
+# LZForge — Azure Landing Zone Demo
 
 ## Folder Structure
 
@@ -36,7 +36,7 @@ lz/
 
 ```powershell
 az login
-az ad sp create-for-rbac --name "velox-demo-sp" --role Owner `
+az ad sp create-for-rbac --name "lzforge-demo-sp" --role Owner `
   --scopes /subscriptions/<YOUR_SUBSCRIPTION_ID>
 ```
 
@@ -45,10 +45,10 @@ Copy the output into your `.env` file.
 ### 2. Create Terraform Remote State Storage (one-time)
 
 ```powershell
-az group create --name rg-velox-tfstate --location westeurope
-az storage account create --name veloxtfstate --resource-group rg-velox-tfstate `
+az group create --name rg-lzforge-tfstate --location westeurope
+az storage account create --name lzforgetfstate --resource-group rg-lzforge-tfstate `
   --location westeurope --sku Standard_LRS
-az storage container create --name tfstate --account-name veloxtfstate
+az storage container create --name tfstate --account-name lzforgetfstate
 ```
 
 ### 3. Fill in .env
