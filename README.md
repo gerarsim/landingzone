@@ -96,3 +96,5 @@ curl http://localhost:8000/jobs
 | Log Analytics | `law-<company>-<env>` |
 | Storage Account | `st<company>diag<env>` |
 | Azure Policy | Require environment tag |
+
+thank you
