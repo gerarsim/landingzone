@@ -1,5 +1,4 @@
 import redis, json, subprocess, os, time, pathlib, logging, sys, shutil
-from cryptography.fernet import Fernet
 
 logging.basicConfig(
     stream=sys.stdout, level=logging.INFO,
@@ -11,12 +10,27 @@ log = logging.getLogger(__name__)
 REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379")
 r = redis.from_url(REDIS_URL, decode_responses=True)
 
-# ── Encryption (must match key used in API) ───────────────────────────
-_raw_key = os.getenv("REDIS_ENCRYPT_KEY", "")
-if not _raw_key:
-    log.error("REDIS_ENCRYPT_KEY not set — worker cannot decrypt jobs")
+# ── Encryption — key auto-managed in Redis, no manual config needed ───
+def _get_fernet():
+    from cryptography.fernet import Fernet
+    for attempt in range(30):
+        try:
+            key = r.get("_encrypt_key")
+            if key:
+                return Fernet(key.encode())
+            new_key = Fernet.generate_key().decode()
+            if r.setnx("_encrypt_key", new_key):
+                log.info("Encryption key created and stored in Redis")
+                return Fernet(new_key.encode())
+            key = r.get("_encrypt_key")
+            return Fernet(key.encode())
+        except Exception:
+            log.warning(f"Waiting for Redis... (attempt {attempt + 1})")
+            time.sleep(1)
+    log.error("Cannot connect to Redis")
     sys.exit(1)
-_fernet = Fernet(_raw_key.encode())
+
+_fernet = _get_fernet()
 
 
 def encrypt_payload(data: dict) -> str:

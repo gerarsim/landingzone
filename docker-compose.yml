@@ -24,7 +24,6 @@ services:
       - "8000:8000"
     environment:
       REDIS_URL: redis://redis:6379
-      REDIS_ENCRYPT_KEY: ${REDIS_ENCRYPT_KEY}
     depends_on:
       - redis
     restart: unless-stopped
@@ -39,9 +38,10 @@ services:
     build: ./worker
     environment:
       REDIS_URL: redis://redis:6379
-      REDIS_ENCRYPT_KEY: ${REDIS_ENCRYPT_KEY}
       # Default Terraform remote state location
       # (can be overridden per-job via the form)
+      TFSTATE_STORAGE_ACCOUNT: ${TFSTATE_STORAGE_ACCOUNT:-lzforgetfstate}
+      TFSTATE_RESOURCE_GROUP:  ${TFSTATE_RESOURCE_GROUP:-rg-lzforge-tfstate}
       TFSTATE_STORAGE_ACCOUNT: ${TFSTATE_STORAGE_ACCOUNT:-lzforgetfstate}
       TFSTATE_RESOURCE_GROUP:  ${TFSTATE_RESOURCE_GROUP:-rg-lzforge-tfstate}
       TFSTATE_CONTAINER:       ${TFSTATE_CONTAINER:-tfstate}
